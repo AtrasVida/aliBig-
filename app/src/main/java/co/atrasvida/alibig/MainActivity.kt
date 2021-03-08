@@ -2,7 +2,9 @@ package co.atrasvida.alibig
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothAdapter.LeScanCallback
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -18,8 +20,10 @@ import android.location.LocationManager
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
 import android.util.Log
 import android.view.OrientationEventListener
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import com.google.gson.Gson
@@ -27,6 +31,8 @@ import kotlinx.android.synthetic.main.activity_main.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.*
+import kotlin.collections.ArrayList
 
 
 class MainActivity : AppCompatActivity() {
@@ -81,7 +87,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val mDeviceList = ArrayList<String>()
-    private val mBluetoothAdapter: BluetoothAdapter? = null
+    private var mBluetoothAdapter: BluetoothAdapter? = null
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -109,8 +115,8 @@ class MainActivity : AppCompatActivity() {
         //val s: MutableList<String> = ArrayList()
         //for (bt in pairedDevices) s.add(bt.name)
 
-        var mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-        mBluetoothAdapter.startDiscovery()
+        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+
 
         val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
         registerReceiver(mReceiver, filter)
@@ -191,9 +197,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onSensorChanged(event: SensorEvent?) {
-                model.orient_azmith = event?.values?.get(0) ?: 0f
-                model.orient_pitch = event?.values?.get(1) ?: 0f
-                model.orient_roll = event?.values?.get(2) ?: 0f
+                try {
+                    model.orient_azmith = event?.values?.get(0) ?: 0f
+                    model.orient_pitch = event?.values?.get(1) ?: 0f
+                    model.orient_roll = event?.values?.get(2) ?: 0f
+                } catch (e: Exception) {
+
+                }
+
             }
         }, mAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
 
@@ -241,6 +252,131 @@ class MainActivity : AppCompatActivity() {
             }
         )
         ////////////////////////////////////////
+
+
+        var mySensorManager = getSystemService(SENSOR_SERVICE) as (SensorManager)
+
+        var lightSensor = mySensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
+        if (lightSensor != null) {
+
+            mySensorManager.registerListener(
+                lightSensorListener,
+                lightSensor,
+                SensorManager.SENSOR_DELAY_NORMAL
+            );
+
+        } else {
+
+        }
+
+
+        var bluetoothManager: BluetoothManager =
+            getSystemService(Context.BLUETOOTH_SERVICE) as (BluetoothManager)
+
+        mBluetoothAdapter = bluetoothManager.getAdapter();
+        // Checks if Bluetooth is supported on the device.
+
+
+        if (mBluetoothAdapter == null) {
+            Toast.makeText(this, "error_bluetooth_not_supported", Toast.LENGTH_SHORT).show();
+            //finish();
+            return;
+        } else {
+            scanLeDevice(true)
+        }
+        ////////////////////////////////////////
+        timerValitate()
+
+        refresh.setOnClickListener {
+            model.ble_list = arrayListOf()
+            model.wifi_list = arrayListOf()
+        }
+    }
+
+    private val SCAN_PERIOD: Long = 10000
+    private fun scanLeDevice(enable: Boolean) {
+        if (enable) {
+            // Stops scanning after a pre-defined scan period.
+            handler.postDelayed(Runnable {
+                mScanning = false
+                mBluetoothAdapter!!.stopLeScan(mLeScanCallback)
+                invalidateOptionsMenu()
+            }, SCAN_PERIOD)
+            mScanning = true
+            mBluetoothAdapter!!.startLeScan(mLeScanCallback)
+        } else {
+            mScanning = false
+            mBluetoothAdapter!!.stopLeScan(mLeScanCallback)
+        }
+        invalidateOptionsMenu()
+    }
+
+    // Device scan callback.
+    private val mLeScanCallback =
+        LeScanCallback { device, rssi, scanRecord ->
+            runOnUiThread {
+                var blm =
+                    BleModel(
+                        device.address,
+                        device.name ?: "",
+                        "" + device.bondState,
+                        rssi ?: 0,
+                        device.type ?: 0
+                    )
+                var isExist = false
+                for (i in 0..model.ble_list.size - 1) {
+                    if (blm.address == model.ble_list[i].address) {
+                        isExist = true
+                        model.ble_list.set(i, blm)
+                    }
+                }
+                if (!isExist)
+                    model.ble_list.add(blm)
+
+                print("mo" + model.ble_list.size)
+
+            }
+        }
+    private var lightSensorListener: SensorEventListener = object : SensorEventListener {
+
+        override fun onAccuracyChanged(p0: Sensor?, p1: Int) {
+        }
+
+        override fun onSensorChanged(event: SensorEvent?) {
+            if (event?.sensor?.type == Sensor.TYPE_LIGHT) {
+                model.light = event.values[0]
+            }
+        }
+    }
+
+    var handler = Handler()
+    var timer = Timer()
+
+    fun timerValitate() {
+
+        var handler = Handler()
+        var timer = Timer()
+        timer.schedule(object : TimerTask() {
+
+            override fun run() {
+                val gson = Gson()
+                val json: String = gson.toJson(model)
+                handler.post {
+                    textView.text = json.replace(",", "\n,")
+                    print("asdasdasdsdfghjkljhgfdsasdfghjkl/")
+                }
+            }
+        }, 100, 100)
+    }
+
+
+    var mScanning: Boolean = false
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        timer.cancel()
+
     }
 
     fun onSaveClick() {
@@ -248,11 +384,11 @@ class MainActivity : AppCompatActivity() {
             File(Environment.getExternalStorageDirectory().path, "bigdel.json")
         File(Environment.getExternalStorageDirectory().path + "/MyFileStorage").mkdirs()
         try {
-            val fileOutPutStream = FileOutputStream(myExternalFile)
 
             val gson = Gson()
             val json: String = gson.toJson(model)
 
+            val fileOutPutStream = FileOutputStream(myExternalFile)
             fileOutPutStream.write(json.toByteArray())
             fileOutPutStream.close()
         } catch (e: IOException) {
@@ -262,7 +398,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun scanSuccess() {
         val results = wifiManager!!.scanResults
-        model.wifi_list= arrayListOf()
+        model.wifi_list = arrayListOf()
         for (result in results) {
             model.wifi_list.add(
                 WifiModel(
@@ -279,7 +415,7 @@ class MainActivity : AppCompatActivity() {
         // handle failure: new scan did NOT succeed
         // consider using old scan results: these are the OLD results!
         val results = wifiManager!!.scanResults
-        model.wifi_list= arrayListOf()
+        model.wifi_list = arrayListOf()
         for (result in results) {
             model.wifi_list.add(
                 WifiModel(
@@ -306,7 +442,7 @@ class MainActivity : AppCompatActivity() {
                     """.trimIndent()
                 )
 
-                model.ble_list.add(BleModel(device.address, device.name, "", device.type))
+                //model.ble_list.add(BleModel(device.address, device.name, "", device.type))
 
             }
         }

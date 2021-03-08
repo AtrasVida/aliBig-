@@ -30,7 +30,8 @@ data class BleModel(
     var address: String,
     var name: String,
     var macAddress: String,
-    var id: Int
+    var rssi: Int,
+    var type: Int
 )
 
 data class WifiModel(
