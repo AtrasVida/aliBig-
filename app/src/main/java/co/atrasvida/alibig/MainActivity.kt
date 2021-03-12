@@ -23,6 +23,7 @@ import android.os.Environment
 import android.os.Handler
 import android.util.Log
 import android.view.OrientationEventListener
+import android.widget.Space
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -290,6 +291,14 @@ class MainActivity : AppCompatActivity() {
         refresh.setOnClickListener {
             model.ble_list = arrayListOf()
             model.wifi_list = arrayListOf()
+
+            scanLeDevice(true)
+
+            val success = wifiManager!!.startScan()
+            if (!success) {
+                // scan failure handling
+                scanFailure()
+            }
         }
     }
 
@@ -360,9 +369,9 @@ class MainActivity : AppCompatActivity() {
 
             override fun run() {
                 val gson = Gson()
-                val json: String = gson.toJson(model)
+                val json: String = arrangeAndFormatJson(gson.toJson(model))
                 handler.post {
-                    textView.text = json.replace(",", "\n,")
+                    textView.text = json
                     print("asdasdasdsdfghjkljhgfdsasdfghjkl/")
                 }
             }
@@ -404,8 +413,8 @@ class MainActivity : AppCompatActivity() {
                 WifiModel(
                     result.BSSID,
                     result.SSID,
-                    result.level,
-                    result.capabilities
+                    result.level
+                    //,result.capabilities
                 )
             )
         }
@@ -421,8 +430,7 @@ class MainActivity : AppCompatActivity() {
                 WifiModel(
                     result.BSSID,
                     result.SSID,
-                    result.level,
-                    result.capabilities
+                    result.level//, result.capabilities
                 )
             )
         }
@@ -446,5 +454,36 @@ class MainActivity : AppCompatActivity() {
 
             }
         }
+    }
+
+    fun arrangeAndFormatJson(j: String): String {
+        var spase = ""
+        var result = ""
+        for (i in j.indices) {
+            when {
+                j[i] == '{' -> {
+                    spase += "    "
+                    result += "{\n$spase"
+                }
+                j[i] == '}' -> {
+                    spase = spase.substring(0, spase.length - 4)
+                    result += ",\n$spase}"
+                } j[i] == '[' -> {
+                    spase += "    "
+                    result += "[\n$spase"
+                }
+                j[i] == ']' -> {
+                    spase = spase.substring(0, spase.length - 4)
+                    result += ",\n$spase]"
+                }
+                j[i] == ',' -> {
+                    result += ",\n$spase"
+                }
+                else -> {
+                    result += j[i]
+                }
+            }
+        }
+        return result;
     }
 }

@@ -37,6 +37,6 @@ data class BleModel(
 data class WifiModel(
     var address: String,
     var name: String,
-    var level: Int,
-    var capabilities: String
+    var level: Int
+    //,var capabilities: String
 )
